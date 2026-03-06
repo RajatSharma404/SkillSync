@@ -1,0 +1,155 @@
+import Groq from "groq-sdk";
+import type { ActivityWithDomain, InsightData } from "@/types";
+
+export type { ActivityWithDomain };
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
+
+export interface InsightOutput {
+  insightText: string;
+  domainsInvolved: string[];
+  confidenceLevel: number;
+  recommendation: string;
+  insightType:
+    | "CORRELATION"
+    | "TIMING_OPTIMIZATION"
+    | "TREND"
+    | "WARNING"
+    | "WIN";
+}
+
+export interface WeeklyReportOutput {
+  summary: string;
+  insights: InsightOutput[];
+}
+
+// ─── Prompt builder ──────────────────────────────────────────────────────────
+
+function buildAnalysisPrompt(activities: ActivityWithDomain[]): string {
+  const grouped: Record<string, object[]> = {};
+
+  for (const a of activities) {
+    const domain = a.domain.name;
+    if (!grouped[domain]) grouped[domain] = [];
+    grouped[domain].push({
+      date: a.loggedAt.toISOString().split("T")[0],
+      value: a.value,
+      unit: a.unit,
+      mood: a.mood,
+      energy: a.energy,
+      notes: a.notes,
+      metadata: a.metadata,
+    });
+  }
+
+  return JSON.stringify(grouped, null, 2);
+}
+
+// ─── Generate weekly AI report ───────────────────────────────────────────────
+
+export async function generateWeeklyReport(
+  activities: ActivityWithDomain[],
+): Promise<WeeklyReportOutput> {
+  const dataPayload = buildAnalysisPrompt(activities);
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 2048,
+      messages: [
+        {
+          role: "system",
+          content: `You are a personal performance analyst for SkillSync, a personal growth dashboard.
+Your role is to analyze multi-domain activity data and surface actionable, data-backed insights.
+
+Rules:
+- Only report correlations that appear genuinely meaningful based on the data.
+- Phrase insights in plain English that a motivated individual can immediately act on.
+- Confidence level should reflect how much data supports the finding (0.0–1.0).
+- insightType must be one of: CORRELATION, TIMING_OPTIMIZATION, TREND, WARNING, WIN.
+- Return ONLY valid JSON — no markdown fences, no preamble, no explanation outside JSON.
+
+Output format:
+{
+  "summary": "<2-3 sentence plain English week summary>",
+  "insights": [
+    {
+      "insightText": "<plain English description of the pattern>",
+      "domainsInvolved": ["<domain1>", "<domain2>"],
+      "confidenceLevel": 0.85,
+      "recommendation": "<actionable suggestion based on this insight>",
+      "insightType": "CORRELATION"
+    }
+  ]
+}`,
+        },
+        {
+          role: "user",
+          content: `Analyze the following multi-domain activity data and return a weekly performance report:\n\n${dataPayload}`,
+        },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+
+    try {
+      return JSON.parse(raw) as WeeklyReportOutput;
+    } catch {
+      return {
+        summary:
+          "Unable to generate summary this week. Keep logging to get better insights!",
+        insights: [],
+      };
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("rate_limit") || msg.includes("quota")) {
+      throw new Error(
+        "AI_CREDITS_DEPLETED: Groq rate limit reached. Please try again later.",
+      );
+    }
+    throw err;
+  }
+}
+
+// ─── On-demand natural language query ───────────────────────────────────────
+
+export async function answerPerformanceQuery(
+  question: string,
+  activities: ActivityWithDomain[],
+  existingInsights: Pick<InsightData, "insightText" | "recommendation">[],
+): Promise<string> {
+  const dataPayload = buildAnalysisPrompt(activities);
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 512,
+      messages: [
+        {
+          role: "system",
+          content: `You are a personal performance analyst for SkillSync.
+Answer the user's question based solely on their activity data. 
+Be specific, data-driven, and concise (2-4 sentences).`,
+        },
+        {
+          role: "user",
+          content: `My activity data:\n${dataPayload}\n\nMy question: ${question}`,
+        },
+      ],
+    });
+
+    return (
+      completion.choices[0]?.message?.content ??
+      "Unable to answer at this time."
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("credit balance") || msg.includes("insufficient_quota")) {
+      return "AI analysis is temporarily unavailable — Groq rate limit reached. Please try again later.";
+    }
+    return "Unable to answer at this time. Please try again later.";
+  }
+}

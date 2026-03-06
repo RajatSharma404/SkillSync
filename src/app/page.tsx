@@ -1,65 +1,141 @@
-import Image from "next/image";
+import Link from "next/link";
+import { getAuthSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function LandingPage() {
+  const session = await getAuthSession();
+  if (session) redirect("/dashboard");
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2rem",
+        background:
+          "linear-gradient(160deg, #05050e 0%, #090520 50%, #05050e 100%)",
+      }}
+    >
+      <div style={{ textAlign: "center", maxWidth: 640 }}>
+        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⚡</div>
+        <h1
+          style={{
+            fontSize: "clamp(2rem, 5vw, 3.5rem)",
+            fontWeight: 800,
+            background: "linear-gradient(135deg, #00d4ff 0%, #ff1f7e 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            marginBottom: "1.25rem",
+            lineHeight: 1.1,
+          }}
+        >
+          SkillSync
+        </h1>
+        <p
+          style={{
+            fontSize: "1.25rem",
+            color: "#8aafc8",
+            marginBottom: "0.75rem",
+            lineHeight: 1.6,
+          }}
+        >
+          Your personal performance scientist.
+        </p>
+        <p
+          style={{
+            fontSize: "1rem",
+            color: "#6b7280",
+            marginBottom: "2.5rem",
+            lineHeight: 1.7,
+          }}
+        >
+          Log habits across every life domain. Let AI surface the hidden
+          correlations — like how your morning run makes you 40% more productive
+          at coding.
+        </p>
+        <Link
+          href="/login"
+          style={{
+            display: "inline-block",
+            background: "linear-gradient(135deg, #00b8e6 0%, #7c2fff 100%)",
+            color: "white",
+            padding: "0.85rem 2.25rem",
+            borderRadius: "10px",
+            fontWeight: 700,
+            fontSize: "1rem",
+            textDecoration: "none",
+            boxShadow: "0 4px 24px rgba(0, 184, 230, 0.4)",
+          }}
+        >
+          Get Started — It&apos;s Free
+        </Link>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "1.25rem",
+          maxWidth: 900,
+          width: "100%",
+          marginTop: "5rem",
+        }}
+      >
+        {[
+          {
+            icon: "📊",
+            title: "Multi-Domain Tracking",
+            desc: "Coding, fitness, reading, mood — all in one place.",
+          },
+          {
+            icon: "🧠",
+            title: "AI Pattern Discovery",
+            desc: "Claude AI finds correlations invisible to the naked eye.",
+          },
+          {
+            icon: "📋",
+            title: "Weekly Intelligence Reports",
+            desc: "Actionable insights every Sunday, backed by your data.",
+          },
+          {
+            icon: "⏰",
+            title: "Activity Optimization",
+            desc: "Predict your optimal times for every type of work.",
+          },
+        ].map((f) => (
+          <div
+            key={f.title}
+            style={{
+              background: "rgba(13, 13, 32, 0.85)",
+              border: "1px solid rgba(0, 212, 255, 0.1)",
+              borderRadius: "14px",
+              padding: "1.5rem",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <div style={{ fontSize: "1.75rem", marginBottom: "0.75rem" }}>
+              {f.icon}
+            </div>
+            <h3
+              style={{
+                fontSize: "0.95rem",
+                fontWeight: 700,
+                marginBottom: "0.5rem",
+              }}
+            >
+              {f.title}
+            </h3>
+            <p
+              style={{ fontSize: "0.85rem", color: "#6b7280", lineHeight: 1.6 }}
+            >
+              {f.desc}
+            </p>
+          </div>
+        ))}
+      </div>
+    </main>
   );
 }

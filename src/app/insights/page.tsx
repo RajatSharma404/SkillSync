@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTheme } from "@/components/ThemeProvider";
 
 interface Insight {
   id: string;
@@ -9,6 +10,11 @@ interface Insight {
   recommendation: string;
   insightType: string;
   createdAt: string;
+}
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -30,10 +36,13 @@ const TYPE_ICONS: Record<string, string> = {
 export default function InsightsPage() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [querying, setQuerying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("ALL");
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
   useEffect(() => {
     fetch("/api/insights")
@@ -44,26 +53,43 @@ export default function InsightsPage() {
       });
   }, []);
 
+  // Auto-scroll chat to bottom whenever new messages arrive
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   async function handleQuery(e: React.FormEvent) {
     e.preventDefault();
-    if (!question.trim()) return;
+    if (!question.trim() || querying) return;
+    const userMsg: ChatMessage = { role: "user", content: question };
+    setMessages((prev) => [...prev, userMsg]);
+    setQuestion("");
     setQuerying(true);
-    setAnswer("");
 
     const res = await fetch("/api/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({
+        question: userMsg.content,
+        messages: messages, // send full history for context
+      }),
     });
     const data = await res.json();
-    setAnswer(data.answer ?? data.error ?? "No response.");
+    const aiMsg: ChatMessage = {
+      role: "assistant",
+      content: data.answer ?? data.error ?? "No response.",
+    };
+    setMessages((prev) => [...prev, aiMsg]);
     setQuerying(false);
   }
 
   const filtered =
     filter === "ALL"
-      ? insights
-      : insights.filter((i) => i.insightType === filter);
+      ? insights.filter((i) => !i.insightText.startsWith("[nudge]"))
+      : insights.filter(
+          (i) =>
+            i.insightType === filter && !i.insightText.startsWith("[nudge]"),
+        );
 
   return (
     <div>
@@ -72,23 +98,121 @@ export default function InsightsPage() {
       >
         AI Insights
       </h1>
-      <p style={{ color: "#6b7280", marginBottom: "2rem" }}>
+      <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>
         Patterns and correlations discovered from your activity data.
       </p>
 
-      {/* Ask AI */}
+      {/* Ask AI — multi-turn chat */}
       <div
         className="card"
         style={{
           marginBottom: "2rem",
-          background: "linear-gradient(135deg, #1a1a2e, #16213e)",
+          background: isDark
+            ? "linear-gradient(135deg, #1a1a2e, #16213e)"
+            : "linear-gradient(135deg, #eef4ff, #f0f8ff)",
+          border: isDark ? undefined : "1px solid #d0e4f8",
         }}
       >
-        <h2
-          style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem" }}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "0.75rem",
+          }}
         >
-          🤖 Ask Your Performance Scientist
-        </h2>
+          <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>
+            🤖 Ask Your Performance Scientist
+          </h2>
+          {messages.length > 0 && (
+            <button
+              onClick={() => setMessages([])}
+              style={{
+                fontSize: "0.72rem",
+                color: "var(--text-muted)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Clear chat
+            </button>
+          )}
+        </div>
+
+        {/* Chat thread */}
+        {messages.length > 0 && (
+          <div
+            style={{
+              maxHeight: 340,
+              overflowY: "auto",
+              marginBottom: "0.85rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.65rem",
+            }}
+          >
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    msg.role === "user" ? "flex-end" : "flex-start",
+                }}
+              >
+                <div
+                  style={{
+                    maxWidth: "80%",
+                    padding: "0.6rem 0.9rem",
+                    borderRadius:
+                      msg.role === "user"
+                        ? "12px 12px 2px 12px"
+                        : "12px 12px 12px 2px",
+                    background:
+                      msg.role === "user"
+                        ? "rgba(0,184,230,0.12)"
+                        : "var(--surface)",
+                    border: `1px solid ${msg.role === "user" ? "rgba(0,184,230,0.3)" : "var(--card-border)"}`,
+                    borderLeft:
+                      msg.role === "assistant"
+                        ? "3px solid var(--accent)"
+                        : undefined,
+                    fontSize: "0.875rem",
+                    lineHeight: 1.65,
+                    color:
+                      msg.role === "user"
+                        ? isDark
+                          ? "#e0f4ff"
+                          : "#0f2d4a"
+                        : "var(--foreground)",
+                  }}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {querying && (
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <div
+                  style={{
+                    padding: "0.6rem 0.9rem",
+                    borderRadius: "12px 12px 12px 2px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--card-border)",
+                    borderLeft: "3px solid var(--accent)",
+                    fontSize: "0.875rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  Thinking…
+                </div>
+              </div>
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+        )}
+
         <form
           onSubmit={handleQuery}
           style={{ display: "flex", gap: "0.75rem" }}
@@ -97,7 +221,11 @@ export default function InsightsPage() {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder='e.g. "How does my sleep affect my coding output?"'
+            placeholder={
+              messages.length === 0
+                ? 'e.g. "How does my sleep affect my coding output?"'
+                : "Ask a follow-up…"
+            }
             style={{ flex: 1 }}
           />
           <button
@@ -109,23 +237,6 @@ export default function InsightsPage() {
             {querying ? "Thinking…" : "Ask →"}
           </button>
         </form>
-        {answer && (
-          <div
-            style={{
-              marginTop: "1rem",
-              background: "rgba(8, 8, 24, 0.9)",
-              border: "1px solid #1a2448",
-              borderLeft: "3px solid #00d4ff",
-              borderRadius: "8px",
-              padding: "1rem",
-              fontSize: "0.9rem",
-              lineHeight: 1.7,
-              color: "#e8e8f0",
-            }}
-          >
-            {answer}
-          </div>
-        )}
       </div>
 
       {/* Filter */}
@@ -153,12 +264,15 @@ export default function InsightsPage() {
               borderRadius: "6px",
               fontSize: "0.8rem",
               fontWeight: filter === t ? 700 : 400,
-              border: `1px solid ${filter === t ? (TYPE_COLORS[t] ?? "#00b8e6") : "#1a2448"}`,
+              border: `1px solid ${filter === t ? (TYPE_COLORS[t] ?? "#00b8e6") : "var(--card-border)"}`,
               background:
                 filter === t
                   ? (TYPE_COLORS[t] ?? "#00b8e6") + "22"
                   : "transparent",
-              color: filter === t ? (TYPE_COLORS[t] ?? "#00d4ff") : "#9ca3af",
+              color:
+                filter === t
+                  ? (TYPE_COLORS[t] ?? "var(--accent)")
+                  : "var(--text-dim)",
               cursor: "pointer",
             }}
           >
@@ -169,14 +283,16 @@ export default function InsightsPage() {
 
       {/* Insights list */}
       {loading ? (
-        <p style={{ color: "#6b7280" }}>Loading insights…</p>
+        <p style={{ color: "var(--text-muted)" }}>Loading insights…</p>
       ) : filtered.length === 0 ? (
         <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-          <p style={{ color: "#6b7280" }}>No insights yet in this category.</p>
+          <p style={{ color: "var(--text-muted)" }}>
+            No insights yet in this category.
+          </p>
           <p
             style={{
               fontSize: "0.85rem",
-              color: "#4b5563",
+              color: "var(--text-dim)",
               marginTop: "0.5rem",
             }}
           >
@@ -193,8 +309,8 @@ export default function InsightsPage() {
               <div
                 key={ins.id}
                 style={{
-                  background: "#0c0c1e",
-                  border: "1px solid #1a2448",
+                  background: "var(--card)",
+                  border: `1px solid var(--card-border)`,
                   borderLeft: `4px solid ${color}`,
                   borderRadius: "12px",
                   padding: "1.25rem 1.5rem",
@@ -246,11 +362,14 @@ export default function InsightsPage() {
 
                 <div
                   style={{
-                    background: "rgba(8, 8, 24, 0.9)",
+                    background: isDark
+                      ? "rgba(0, 212, 255, 0.06)"
+                      : "rgba(0, 153, 204, 0.06)",
+                    border: `1px solid ${isDark ? "rgba(0,212,255,0.15)" : "rgba(0,153,204,0.2)"}`,
                     borderRadius: "8px",
                     padding: "0.65rem 0.9rem",
                     fontSize: "0.82rem",
-                    color: "#00d4ff",
+                    color: isDark ? "#00d4ff" : "#0077aa",
                     lineHeight: 1.6,
                   }}
                 >
@@ -270,8 +389,8 @@ export default function InsightsPage() {
                       key={d}
                       style={{
                         fontSize: "0.7rem",
-                        background: "#1a2448",
-                        color: "#9ca3af",
+                        background: "var(--tag-bg)",
+                        color: "var(--tag-text)",
                         padding: "0.2rem 0.5rem",
                         borderRadius: "4px",
                       }}

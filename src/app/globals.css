@@ -10,6 +10,21 @@
   --accent3: #ff7b2f;
   --accent-light: #67e8f9;
   --muted: #4a607a;
+
+  /* Semantic tokens used by pages */
+  --tooltip-bg: #0d0d22;
+  --tooltip-border: #1a2448;
+  --tooltip-text: #e5e7eb;
+  --chart-grid: #1a2448;
+  --chart-axis: #9ca3af;
+  --surface: rgba(8, 8, 24, 0.85);
+  --surface-strong: rgba(12, 12, 30, 0.95);
+  --text-muted: #6b7280;
+  --text-dim: #9ca3af;
+  --tag-bg: #1a2448;
+  --tag-text: #9ca3af;
+  --heatmap-empty: #111827;
+  --inactive-bg: rgba(8, 8, 24, 0.8);
 }
 
 @theme inline {
@@ -130,4 +145,82 @@ select:focus {
 input::placeholder,
 textarea::placeholder {
   color: var(--muted);
+}
+
+/* ── Light mode ──────────────────────────────────────────────── */
+[data-theme="light"] {
+  --background: #f0f4ff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-border: #dce6f5;
+  --accent: #0099cc;
+  --accent2: #d91a6b;
+  --accent3: #d46200;
+  --accent-light: #0ea5c7;
+  --muted: #64748b;
+
+  /* Semantic token overrides */
+  --tooltip-bg: #ffffff;
+  --tooltip-border: #dce6f5;
+  --tooltip-text: #0f172a;
+  --chart-grid: #dce6f5;
+  --chart-axis: #94a3b8;
+  --surface: rgba(248, 250, 255, 0.85);
+  --surface-strong: rgba(241, 245, 255, 0.97);
+  --text-muted: #4b5563;
+  --text-dim: #64748b;
+  --tag-bg: #e8eef8;
+  --tag-text: #475569;
+  --heatmap-empty: #dce6f5;
+  --inactive-bg: rgba(240, 244, 255, 0.7);
+}
+
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(
+      ellipse at 15% 15%,
+      rgba(0, 153, 204, 0.08) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 85% 85%,
+      rgba(160, 0, 255, 0.05) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(220, 230, 255, 0.5) 0%,
+      transparent 80%
+    );
+}
+
+[data-theme="light"] .card {
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+[data-theme="light"] .card:hover {
+  border-color: rgba(0, 153, 204, 0.35);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 153, 204, 0.1);
+}
+
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background: rgba(255, 255, 255, 0.9);
+}
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus {
+  border-color: rgba(0, 153, 204, 0.5);
+  box-shadow: 0 0 0 3px rgba(0, 153, 204, 0.1);
+}
+
+[data-theme="light"] .btn-ghost {
+  color: #334155;
+}
+[data-theme="light"] .btn-ghost:hover {
+  border-color: rgba(0, 153, 204, 0.4);
 }

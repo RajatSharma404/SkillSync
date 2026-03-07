@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { useTheme } from "./ThemeProvider";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
@@ -9,19 +10,27 @@ const NAV_LINKS = [
   { href: "/analytics", label: "Analytics", icon: "📈" },
   { href: "/insights", label: "Insights", icon: "🧠" },
   { href: "/reports", label: "Reports", icon: "📋" },
+  { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export default function Navbar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { theme, toggle } = useTheme();
+
+  const isDark = theme === "dark";
 
   return (
     <nav
       style={{
-        background: "rgba(5, 5, 18, 0.88)",
+        background: isDark
+          ? "rgba(5, 5, 18, 0.88)"
+          : "rgba(255, 255, 255, 0.88)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
-        borderBottom: "1px solid rgba(0, 212, 255, 0.1)",
+        borderBottom: isDark
+          ? "1px solid rgba(0, 212, 255, 0.1)"
+          : "1px solid rgba(0, 153, 204, 0.15)",
         padding: "0 1.5rem",
         display: "flex",
         alignItems: "center",
@@ -42,7 +51,12 @@ export default function Navbar() {
           gap: "0.5rem",
         }}
       >
-        <span style={{ fontSize: "1.2rem" }}>⚡</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/icon.svg"
+          alt="SkillSync"
+          style={{ width: 24, height: 24 }}
+        />
         <span
           style={{
             fontWeight: 900,
@@ -74,10 +88,16 @@ export default function Navbar() {
                 borderRadius: "8px",
                 fontSize: "0.85rem",
                 fontWeight: active ? 600 : 400,
-                color: active ? "#00d4ff" : "#6b80a0",
-                background: active ? "rgba(0, 212, 255, 0.1)" : "transparent",
+                color: active ? "#00b4d8" : isDark ? "#6b80a0" : "#475569",
+                background: active
+                  ? isDark
+                    ? "rgba(0, 212, 255, 0.1)"
+                    : "rgba(0, 153, 204, 0.08)"
+                  : "transparent",
                 border: active
-                  ? "1px solid rgba(0, 212, 255, 0.2)"
+                  ? isDark
+                    ? "1px solid rgba(0, 212, 255, 0.2)"
+                    : "1px solid rgba(0, 153, 204, 0.25)"
                   : "1px solid transparent",
                 textDecoration: "none",
                 transition: "all 0.15s",
@@ -92,8 +112,33 @@ export default function Navbar() {
         })}
       </div>
 
-      {/* User + sign out */}
+      {/* User + theme toggle + sign out */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        {/* Theme toggle */}
+        <button
+          onClick={toggle}
+          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          style={{
+            background: "transparent",
+            border: isDark
+              ? "1px solid rgba(255, 255, 255, 0.12)"
+              : "1px solid rgba(0, 0, 0, 0.12)",
+            borderRadius: "8px",
+            color: isDark ? "#a0aec0" : "#475569",
+            width: 32,
+            height: 32,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "0.85rem",
+            cursor: "pointer",
+            transition: "background 0.15s, border-color 0.15s",
+            flexShrink: 0,
+          }}
+        >
+          {isDark ? "☀️" : "🌙"}
+        </button>
+
         {session?.user?.image && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -110,7 +155,7 @@ export default function Navbar() {
         <span
           style={{
             fontSize: "0.8rem",
-            color: "#6b80a0",
+            color: isDark ? "#6b80a0" : "#64748b",
             maxWidth: 140,
             overflow: "hidden",
             textOverflow: "ellipsis",

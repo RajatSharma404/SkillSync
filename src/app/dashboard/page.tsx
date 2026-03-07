@@ -2,8 +2,9 @@ import { getAuthSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { ActivityWithDomain, DomainData, InsightData } from "@/types";
 import { redirect } from "next/navigation";
-import { format, subDays, startOfDay } from "date-fns";
+import { format, subDays, startOfDay, startOfMonth } from "date-fns";
 import Link from "next/link";
+import { generateDailyNudge } from "@/lib/claude";
 
 export default async function DashboardPage() {
   const session = await getAuthSession();
@@ -11,30 +12,40 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  const [recentActivities, latestInsights, weeklyReports, activityCounts] =
-    await Promise.all([
-      prisma.activityLog.findMany({
-        where: { userId, loggedAt: { gte: subDays(new Date(), 7) } },
-        include: { domain: true },
-        orderBy: { loggedAt: "desc" },
-        take: 10,
-      }),
-      prisma.insight.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-      }),
-      prisma.weeklyReport.findMany({
-        where: { userId },
-        orderBy: { weekStart: "desc" },
-        take: 1,
-      }),
-      prisma.activityLog.groupBy({
-        by: ["domainId"],
-        where: { userId, loggedAt: { gte: subDays(new Date(), 30) } },
-        _count: { id: true },
-      }),
-    ]);
+  const [
+    recentActivities,
+    latestInsights,
+    weeklyReports,
+    activityCounts,
+    goals,
+  ] = await Promise.all([
+    prisma.activityLog.findMany({
+      where: { userId, loggedAt: { gte: subDays(new Date(), 7) } },
+      include: { domain: true },
+      orderBy: { loggedAt: "desc" },
+      take: 10,
+    }),
+    prisma.insight.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+    }),
+    prisma.weeklyReport.findMany({
+      where: { userId },
+      orderBy: { weekStart: "desc" },
+      take: 1,
+    }),
+    prisma.activityLog.groupBy({
+      by: ["domainId"],
+      where: { userId, loggedAt: { gte: subDays(new Date(), 30) } },
+      _count: { id: true },
+    }),
+    prisma.goal.findMany({
+      where: { userId },
+      include: { domain: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
 
   const allDomains = await prisma.domain.findMany();
   const domainMap: Record<string, DomainData> = {};
@@ -50,6 +61,69 @@ export default async function DashboardPage() {
     recentActs.map((a: ActivityWithDomain) => a.loggedAt),
   );
 
+  // Daily nudge — check cache then generate if needed
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  let dailyNudge = "";
+  const cachedNudge = await prisma.insight.findFirst({
+    where: {
+      userId,
+      insightType: "WIN",
+      insightText: { startsWith: "[nudge]" },
+      createdAt: { gte: new Date(`${todayStr}T00:00:00`) },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (cachedNudge) {
+    dailyNudge = cachedNudge.insightText.replace("[nudge] ", "");
+  } else {
+    const nudgeActivities = await prisma.activityLog.findMany({
+      where: { userId, loggedAt: { gte: subDays(new Date(), 14) } },
+      include: { domain: true },
+      orderBy: { loggedAt: "asc" },
+    });
+    dailyNudge = await generateDailyNudge(
+      nudgeActivities as unknown as ActivityWithDomain[],
+    );
+    await prisma.insight.create({
+      data: {
+        userId,
+        insightText: `[nudge] ${dailyNudge}`,
+        domainsInvolved: [],
+        confidenceLevel: 1,
+        recommendation: "",
+        insightType: "WIN",
+      },
+    });
+  }
+
+  // Calculate current-period progress for each goal
+  const now = new Date();
+  const goalsWithProgress = await Promise.all(
+    goals.map(async (goal) => {
+      const periodStart =
+        goal.period === "monthly" ? startOfMonth(now) : subDays(now, 6);
+      const logs = await prisma.activityLog.findMany({
+        where: {
+          userId,
+          domainId: goal.domainId,
+          loggedAt: { gte: periodStart },
+          value: { not: null },
+        },
+        select: { value: true },
+      });
+      const currentValue = logs.reduce((sum, l) => sum + (l.value ?? 0), 0);
+      const progressPct = Math.min(
+        100,
+        Math.round((currentValue / goal.targetValue) * 100),
+      );
+      return {
+        ...goal,
+        currentValue: Math.round(currentValue * 10) / 10,
+        progressPct,
+      };
+    }),
+  );
+
   return (
     <div>
       {/* Header */}
@@ -62,6 +136,37 @@ export default async function DashboardPage() {
           {format(new Date(), "EEEE, MMMM d, yyyy")}
         </p>
       </div>
+
+      {/* Daily AI Nudge */}
+      {dailyNudge && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "0.75rem",
+            padding: "0.9rem 1.1rem",
+            marginBottom: "1.75rem",
+            background:
+              "linear-gradient(135deg, rgba(0,212,255,0.07), rgba(14,165,233,0.05))",
+            border: "1px solid rgba(0,212,255,0.18)",
+            borderLeft: "3px solid #00d4ff",
+            borderRadius: "10px",
+          }}
+        >
+          <span style={{ fontSize: "1.15rem", flexShrink: 0 }}>🤖</span>
+          <p
+            style={{
+              fontSize: "0.875rem",
+              lineHeight: 1.65,
+              color: "#cbd5e1",
+              margin: 0,
+            }}
+          >
+            <strong style={{ color: "#00d4ff" }}>Today's tip: </strong>
+            {dailyNudge}
+          </p>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div
@@ -330,6 +435,116 @@ export default async function DashboardPage() {
             style={{ color: "#9ca3af", fontSize: "0.875rem", lineHeight: 1.7 }}
           >
             {weeklyReports[0].summary}
+          </p>
+        </div>
+      )}
+      {/* Goals Progress */}
+      {goalsWithProgress.length > 0 && (
+        <div className="card" style={{ marginTop: "1.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "1.25rem",
+            }}
+          >
+            <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>
+              🎯 Goals Progress
+            </h2>
+            <Link
+              href="/settings"
+              style={{
+                fontSize: "0.8rem",
+                color: "#00d4ff",
+                textDecoration: "none",
+              }}
+            >
+              Manage goals
+            </Link>
+          </div>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+          >
+            {goalsWithProgress.map((goal) => (
+              <div key={goal.id}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "0.4rem",
+                  }}
+                >
+                  <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                    {goal.domain.icon} {goal.domain.name}
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "#6b7280",
+                        fontWeight: 400,
+                        marginLeft: "0.4rem",
+                      }}
+                    >
+                      {goal.period}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: "0.8rem", color: "#9ca3af" }}>
+                    {goal.currentValue} / {goal.targetValue} {goal.unit}
+                    <span
+                      style={{
+                        marginLeft: "0.5rem",
+                        fontWeight: 700,
+                        color: goal.progressPct >= 100 ? "#34d399" : "#00d4ff",
+                      }}
+                    >
+                      {goal.progressPct}%
+                    </span>
+                  </span>
+                </div>
+                <div
+                  style={{
+                    height: 7,
+                    background: "#1a2448",
+                    borderRadius: 4,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${goal.progressPct}%`,
+                      background:
+                        goal.progressPct >= 100
+                          ? "linear-gradient(90deg, #34d399, #10b981)"
+                          : `linear-gradient(90deg, ${goal.domain.color}, ${goal.domain.color}cc)`,
+                      borderRadius: 4,
+                      transition: "width 0.4s ease",
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* No goals nudge */}
+      {goalsWithProgress.length === 0 && (
+        <div
+          className="card"
+          style={{
+            marginTop: "1.5rem",
+            textAlign: "center",
+            padding: "1.5rem",
+            border: "1px dashed #1a2448",
+          }}
+        >
+          <p style={{ color: "#6b7280", fontSize: "0.875rem" }}>
+            No goals set yet.{" "}
+            <Link href="/settings" style={{ color: "#00d4ff" }}>
+              Set your first goal →
+            </Link>
           </p>
         </div>
       )}

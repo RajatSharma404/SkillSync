@@ -65,6 +65,7 @@ model User {
   insights      Insight[]
   weeklyReports WeeklyReport[]
   domains       UserDomain[]
+  goals         Goal[]
 }
 
 // A "domain" is a life area the user wants to track (e.g., Coding, Fitness)
@@ -74,9 +75,12 @@ model Domain {
   icon        String       // emoji or icon name
   color       String       // hex color for UI
   description String?
+  isCustom    Boolean      @default(false) // true for user-created domains
+  createdBy   String?      // userId of creator for custom domains
 
   userDomains  UserDomain[]
   activityLogs ActivityLog[]
+  goals        Goal[]
 }
 
 // Allows users to personalise which domains they track
@@ -168,3 +172,20 @@ model WeeklyReport {
   @@index([userId, weekStart])
 }
 
+// Weekly or monthly goal for a domain
+model Goal {
+  id          String   @id @default(cuid())
+  userId      String
+  domainId    String
+  targetValue Float    // e.g. 10 (hours per week)
+  unit        String   // e.g. "hours", "problems", "km"
+  period      String   @default("weekly") // "weekly" | "monthly"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, domainId, period])
+  @@index([userId])
+}

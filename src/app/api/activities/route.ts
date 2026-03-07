@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const domainId = searchParams.get("domainId");
   const limitParam = searchParams.get("limit");
-  const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 50;
+  const limit = limitParam ? Math.min(parseInt(limitParam, 10), 1500) : 50;
 
   const activities = await prisma.activityLog.findMany({
     where: {

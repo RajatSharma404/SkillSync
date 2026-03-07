@@ -16,8 +16,19 @@ interface RecentActivity {
   loggedAt: string;
   value: number | null;
   unit: string | null;
+  mood: number | null;
+  energy: number | null;
   notes: string | null;
   domain: { name: string; icon: string; color: string };
+}
+
+interface EditState {
+  id: string;
+  value: string;
+  unit: string;
+  mood: string;
+  energy: string;
+  notes: string;
 }
 
 const UNITS: Record<string, string[]> = {
@@ -48,6 +59,13 @@ export default function LogPage() {
     [],
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editState, setEditState] = useState<EditState | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Natural-language quick log
+  const [nlText, setNlText] = useState("");
+  const [nlParsing, setNlParsing] = useState(false);
+  const [nlMessage, setNlMessage] = useState("");
 
   const fetchRecent = useCallback(() => {
     fetch("/api/activities?limit=8")
@@ -121,6 +139,70 @@ export default function LogPage() {
     setLoading(false);
   }
 
+  function startEdit(a: RecentActivity) {
+    setEditState({
+      id: a.id,
+      value: a.value !== null ? String(a.value) : "",
+      unit: a.unit ?? "",
+      mood: a.mood !== null ? String(a.mood) : "",
+      energy: a.energy !== null ? String(a.energy) : "",
+      notes: a.notes ?? "",
+    });
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editState) return;
+    setSavingEdit(true);
+    const res = await fetch(`/api/activities/${editState.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        value: editState.value ? parseFloat(editState.value) : null,
+        unit: editState.unit || null,
+        mood: editState.mood ? parseInt(editState.mood) : null,
+        energy: editState.energy ? parseInt(editState.energy) : null,
+        notes: editState.notes || null,
+      }),
+    });
+    if (res.ok) {
+      setEditState(null);
+      fetchRecent();
+    }
+    setSavingEdit(false);
+  }
+
+  async function handleQuickLog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nlText.trim()) return;
+    setNlParsing(true);
+    setNlMessage("");
+    const res = await fetch("/api/activities/parse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: nlText }),
+    });
+    const parsed = await res.json();
+    if (!res.ok) {
+      setNlMessage(parsed.error ?? "Could not parse activity.");
+      setNlParsing(false);
+      return;
+    }
+    // Pre-fill the manual form with parsed values
+    if (parsed.domainId) {
+      const dom = domains.find((d) => d.id === parsed.domainId);
+      if (dom) selectDomain(dom);
+    }
+    if (parsed.value !== null) setValue(String(parsed.value));
+    if (parsed.unit) setUnit(parsed.unit);
+    if (parsed.mood !== null) setMood(String(parsed.mood));
+    if (parsed.energy !== null) setEnergy(String(parsed.energy));
+    if (parsed.notes) setNotes(parsed.notes);
+    setNlText("");
+    setNlMessage("✓ Form pre-filled — review and click Log Activity to save.");
+    setNlParsing(false);
+  }
+
   return (
     <div style={{ maxWidth: 680, margin: "0 auto" }}>
       <h1
@@ -131,6 +213,66 @@ export default function LogPage() {
       <p style={{ color: "#6b7280", marginBottom: "2rem" }}>
         Each log builds the dataset your AI performance scientist will analyse.
       </p>
+
+      {/* ── AI Quick Log ────────────────────────────────────────────── */}
+      <div
+        className="card"
+        style={{
+          marginBottom: "2rem",
+          background: "linear-gradient(135deg, #1a1a2e, #16213e)",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "0.95rem",
+            fontWeight: 700,
+            marginBottom: "0.5rem",
+          }}
+        >
+          ⚡ Quick Log with AI
+        </h2>
+        <p
+          style={{
+            fontSize: "0.8rem",
+            color: "#6b7280",
+            marginBottom: "0.85rem",
+          }}
+        >
+          Describe what you did in plain English — AI will fill the form for
+          you.
+        </p>
+        <form
+          onSubmit={handleQuickLog}
+          style={{ display: "flex", gap: "0.65rem" }}
+        >
+          <input
+            type="text"
+            value={nlText}
+            onChange={(e) => setNlText(e.target.value)}
+            placeholder='e.g. "ran 5km this morning, mood 8, felt energized"'
+            style={{ flex: 1 }}
+          />
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={nlParsing}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {nlParsing ? "Parsing…" : "Parse →"}
+          </button>
+        </form>
+        {nlMessage && (
+          <p
+            style={{
+              marginTop: "0.6rem",
+              fontSize: "0.8rem",
+              color: nlMessage.startsWith("✓") ? "#34d399" : "#f87171",
+            }}
+          >
+            {nlMessage}
+          </p>
+        )}
+      </div>
 
       {/* Domain selector */}
       <div style={{ marginBottom: "1.5rem" }}>
@@ -373,88 +515,283 @@ export default function LogPage() {
             style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}
           >
             {recentActivities.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  padding: "0.55rem 0.75rem",
-                  background: "rgba(8, 8, 24, 0.9)",
-                  border: "1px solid #1a2448",
-                  borderRadius: "8px",
-                }}
-              >
-                <span style={{ fontSize: "1.2rem" }}>{a.domain.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      fontSize: "0.875rem",
-                      color: a.domain.color,
-                    }}
-                  >
-                    {a.domain.name}
-                  </span>
-                  {a.value !== null && (
+              <div key={a.id}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                    padding: "0.55rem 0.75rem",
+                    background:
+                      editState?.id === a.id
+                        ? "rgba(0,212,255,0.05)"
+                        : "rgba(8, 8, 24, 0.9)",
+                    border: `1px solid ${editState?.id === a.id ? "rgba(0,212,255,0.3)" : "#1a2448"}`,
+                    borderRadius:
+                      editState?.id === a.id ? "8px 8px 0 0" : "8px",
+                  }}
+                >
+                  <span style={{ fontSize: "1.2rem" }}>{a.domain.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <span
                       style={{
-                        color: "#6b7280",
-                        fontSize: "0.8rem",
-                        marginLeft: "0.5rem",
+                        fontWeight: 600,
+                        fontSize: "0.875rem",
+                        color: a.domain.color,
                       }}
                     >
-                      {a.value} {a.unit}
+                      {a.domain.name}
                     </span>
-                  )}
-                  {a.notes && (
-                    <p
+                    {a.value !== null && (
+                      <span
+                        style={{
+                          color: "#6b7280",
+                          fontSize: "0.8rem",
+                          marginLeft: "0.5rem",
+                        }}
+                      >
+                        {a.value} {a.unit}
+                      </span>
+                    )}
+                    {a.mood !== null && (
+                      <span
+                        style={{
+                          color: "#6b7280",
+                          fontSize: "0.8rem",
+                          marginLeft: "0.5rem",
+                        }}
+                      >
+                        mood {a.mood}
+                      </span>
+                    )}
+                    {a.notes && (
+                      <p
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "#4b5563",
+                          marginTop: "0.1rem",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {a.notes}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "#4b5563",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {format(new Date(a.loggedAt), "MMM d, HH:mm")}
+                  </span>
+                  {/* Edit button */}
+                  <button
+                    onClick={() =>
+                      editState?.id === a.id ? setEditState(null) : startEdit(a)
+                    }
+                    title={editState?.id === a.id ? "Cancel edit" : "Edit"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: editState?.id === a.id ? "#00d4ff" : "#6b7280",
+                      fontSize: "0.9rem",
+                      padding: "0.25rem",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Delete this log?")) return;
+                      setDeletingId(a.id);
+                      await fetch(`/api/activities/${a.id}`, {
+                        method: "DELETE",
+                      });
+                      setDeletingId(null);
+                      fetchRecent();
+                    }}
+                    disabled={deletingId === a.id}
+                    title="Delete"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: deletingId === a.id ? "#4b5563" : "#f87171",
+                      fontSize: "0.9rem",
+                      padding: "0.25rem",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {deletingId === a.id ? "…" : "🗑"}
+                  </button>
+                </div>
+
+                {/* Inline edit form */}
+                {editState?.id === a.id && (
+                  <form
+                    onSubmit={saveEdit}
+                    style={{
+                      background: "rgba(0,212,255,0.03)",
+                      border: "1px solid rgba(0,212,255,0.2)",
+                      borderTop: "none",
+                      borderRadius: "0 0 8px 8px",
+                      padding: "0.85rem 0.75rem",
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "0.65rem",
+                    }}
+                  >
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "#a0a0b8",
+                          display: "block",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Value
+                      </label>
+                      <input
+                        type="number"
+                        value={editState.value}
+                        onChange={(e) =>
+                          setEditState({ ...editState, value: e.target.value })
+                        }
+                        placeholder="Amount"
+                        style={{
+                          fontSize: "0.85rem",
+                          padding: "0.4rem 0.6rem",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "#a0a0b8",
+                          display: "block",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Unit
+                      </label>
+                      <input
+                        value={editState.unit}
+                        onChange={(e) =>
+                          setEditState({ ...editState, unit: e.target.value })
+                        }
+                        placeholder="e.g. hours"
+                        style={{
+                          fontSize: "0.85rem",
+                          padding: "0.4rem 0.6rem",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "#a0a0b8",
+                          display: "block",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Mood (1–10)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={editState.mood}
+                        onChange={(e) =>
+                          setEditState({ ...editState, mood: e.target.value })
+                        }
+                        placeholder="optional"
+                        style={{
+                          fontSize: "0.85rem",
+                          padding: "0.4rem 0.6rem",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "#a0a0b8",
+                          display: "block",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Energy (1–10)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={editState.energy}
+                        onChange={(e) =>
+                          setEditState({ ...editState, energy: e.target.value })
+                        }
+                        placeholder="optional"
+                        style={{
+                          fontSize: "0.85rem",
+                          padding: "0.4rem 0.6rem",
+                        }}
+                      />
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label
+                        style={{
+                          fontSize: "0.7rem",
+                          color: "#a0a0b8",
+                          display: "block",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Notes
+                      </label>
+                      <textarea
+                        value={editState.notes}
+                        onChange={(e) =>
+                          setEditState({ ...editState, notes: e.target.value })
+                        }
+                        rows={2}
+                        style={{ resize: "vertical", fontSize: "0.85rem" }}
+                      />
+                    </div>
+                    <div
                       style={{
-                        fontSize: "0.75rem",
-                        color: "#4b5563",
-                        marginTop: "0.1rem",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        gridColumn: "1 / -1",
+                        display: "flex",
+                        gap: "0.5rem",
                       }}
                     >
-                      {a.notes}
-                    </p>
-                  )}
-                </div>
-                <span
-                  style={{
-                    fontSize: "0.7rem",
-                    color: "#4b5563",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {format(new Date(a.loggedAt), "MMM d, HH:mm")}
-                </span>
-                <button
-                  onClick={async () => {
-                    if (!confirm("Delete this log?")) return;
-                    setDeletingId(a.id);
-                    await fetch(`/api/activities/${a.id}`, {
-                      method: "DELETE",
-                    });
-                    setDeletingId(null);
-                    fetchRecent();
-                  }}
-                  disabled={deletingId === a.id}
-                  title="Delete"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: deletingId === a.id ? "#4b5563" : "#f87171",
-                    fontSize: "0.9rem",
-                    padding: "0.25rem",
-                    lineHeight: 1,
-                  }}
-                >
-                  {deletingId === a.id ? "…" : "🗑"}
-                </button>
+                      <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={savingEdit}
+                        style={{ fontSize: "0.8rem", padding: "0.4rem 1rem" }}
+                      >
+                        {savingEdit ? "Saving…" : "Save Changes"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setEditState(null)}
+                        style={{ fontSize: "0.8rem", padding: "0.4rem 1rem" }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             ))}
           </div>

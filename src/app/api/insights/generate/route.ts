@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateWeeklyReport } from "@/lib/claude";
+import { checkRateLimit } from "@/lib/ratelimit";
 import type { ActivityWithDomain } from "@/types";
 import { startOfWeek, endOfWeek, subDays } from "date-fns";
 
@@ -10,6 +11,15 @@ export async function POST(req: NextRequest) {
   const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 3 report generations per hour per user
+  const rl = checkRateLimit(`generate:${session.user.id}`, 3, 60 * 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Retry in ${rl.retryAfter}s.` },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } },
+    );
   }
 
   const userId = session.user.id;

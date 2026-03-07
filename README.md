@@ -17,24 +17,31 @@ SkillSync is a full-stack habit and activity tracker that logs your life across 
 - **AI-Powered Insights** — Groq (Llama 3.3 70B) analyzes your data and surfaces correlations, trends, wins, and warnings
 - **Weekly Intelligence Reports** — Auto-generated weekly summaries with typed insights: `CORRELATION`, `TREND`, `WIN`, `WARNING`, `TIMING_OPTIMIZATION`
 - **Natural Language Q&A** — Ask your performance scientist anything: _"How does my sleep affect my mood?"_
-- **Analytics Dashboard** — Visual charts (Recharts) showing activity trends per domain over time
-- **Streak & Stats Tracking** — Day streaks, weekly log counts, active domain counts
-- **Full Auth** — Credentials (no password demo), Google OAuth, and GitHub OAuth via NextAuth v4
+- **Advanced Analytics** — Activity heatmaps, domain correlation scatter charts, streak tracking, and trend charts powered by Recharts
+- **Goal Tracking** — Set weekly or monthly targets per domain with AI-suggested goals; track real-time progress with a visual progress bar
+- **Domain Management** — Activate/deactivate built-in domains or create fully custom ones with a name, description, icon, and color
+- **Daily Reminders** — Browser notification reminders if you haven't logged by a chosen time
+- **Data Export** — Download your complete activity history as CSV or JSON
+- **Dark / Light Mode** — Persistent theme toggle with a polished light theme; no flash on load
+- **Rate Limiting** — API routes protected against abuse via sliding-window rate limiting
+- **Full Auth** — Credentials (no-password demo), Google OAuth, and GitHub OAuth via NextAuth v4
 
 ---
 
 ## 🛠 Tech Stack
 
-| Layer     | Technology                                  |
-| --------- | ------------------------------------------- |
-| Framework | Next.js 16 (App Router, Turbopack)          |
-| Language  | TypeScript                                  |
-| Styling   | Tailwind CSS v4                             |
-| Database  | PostgreSQL (Neon serverless)                |
-| ORM       | Prisma v7 + `@prisma/adapter-pg`            |
-| Auth      | NextAuth v4 (Credentials + Google + GitHub) |
-| AI        | Groq API — `llama-3.3-70b-versatile`        |
-| Charts    | Recharts                                    |
+| Layer        | Technology                                  |
+| ------------ | ------------------------------------------- |
+| Framework    | Next.js 16 (App Router, Turbopack)          |
+| Language     | TypeScript                                  |
+| Styling      | Tailwind CSS v4                             |
+| Database     | PostgreSQL (Neon serverless)                |
+| ORM          | Prisma v7 + `@prisma/adapter-pg`            |
+| Auth         | NextAuth v4 (Credentials + Google + GitHub) |
+| AI           | Groq API — `llama-3.3-70b-versatile`        |
+| Charts       | Recharts                                    |
+| Icons        | Lucide React                                |
+| Date helpers | date-fns                                    |
 
 ---
 
@@ -43,34 +50,42 @@ SkillSync is a full-stack habit and activity tracker that logs your life across 
 ```
 skillsync/
 ├── prisma/
-│   ├── schema.prisma            # Database schema (User, Domain, ActivityLog, Insight, WeeklyReport)
+│   ├── schema.prisma            # DB schema (User, Domain, ActivityLog, Insight, WeeklyReport, Goal)
 │   ├── seed.ts                  # Seeds 6 default domains
 │   └── prisma.config.ts         # Prisma v7 config with pg driver adapter
 ├── src/
+│   ├── middleware.ts             # Auth + rate-limit middleware (protects all app routes)
 │   ├── app/
 │   │   ├── page.tsx             # Landing page
+│   │   ├── icon.svg             # App icon (gradient lightning bolt)
 │   │   ├── (auth)/login/        # Sign-in page
 │   │   ├── dashboard/           # Stats, streaks, recent activity, latest insights
 │   │   ├── log/                 # Log a new activity + recent log history
-│   │   ├── analytics/           # Charts and visual trends per domain
-│   │   ├── insights/            # AI insights browser + natural language Q&A
+│   │   ├── analytics/           # Heatmaps, correlation charts, and domain trends
+│   │   ├── insights/            # AI insight browser + natural language Q&A
 │   │   ├── reports/             # Weekly AI report generator + history
+│   │   ├── settings/            # Domain management, goals, notifications, data export
 │   │   └── api/
 │   │       ├── auth/[...nextauth]/   # NextAuth handler
-│   │       ├── activities/           # GET / POST / PATCH / DELETE
+│   │       ├── activities/           # GET / POST / PATCH / DELETE activity logs
 │   │       ├── domains/              # GET all domains
+│   │       ├── goals/                # GET / POST / DELETE goals
 │   │       ├── insights/             # GET insights
-│   │       ├── insights/generate/    # POST — triggers AI weekly report
+│   │       ├── insights/generate/    # POST — trigger AI weekly report
 │   │       ├── weekly-report/        # GET weekly reports
 │   │       ├── query/                # POST — on-demand AI Q&A
+│   │       ├── export/               # GET — download activity data as CSV or JSON
 │   │       └── seed/                 # POST — seed default domains
 │   ├── components/
-│   │   ├── Navbar.tsx
-│   │   └── SessionProvider.tsx
+│   │   ├── Navbar.tsx               # Top nav with theme toggle
+│   │   ├── ThemeProvider.tsx        # React context for dark/light theme
+│   │   ├── NotificationProvider.tsx # Browser notification scheduler
+│   │   └── SessionProvider.tsx      # NextAuth session wrapper
 │   ├── lib/
 │   │   ├── prisma.ts            # Prisma client singleton (Prisma v7 adapter-pg)
 │   │   ├── auth.ts              # NextAuth config
-│   │   └── claude.ts            # Groq AI wrapper (weekly report + Q&A)
+│   │   ├── claude.ts            # Groq AI wrapper (weekly report + Q&A)
+│   │   └── ratelimit.ts         # Sliding-window rate limiter
 │   └── types/
 │       ├── index.ts             # Shared TypeScript interfaces
 │       └── next-auth.d.ts       # Session type augmentation
@@ -131,27 +146,32 @@ Open [http://localhost:3000](http://localhost:3000) — sign in with any email a
 
 ## 🗺 Pages & Routes
 
-| Route        | Description                                                 |
-| ------------ | ----------------------------------------------------------- |
-| `/`          | Landing page                                                |
-| `/login`     | Sign in (credentials / Google / GitHub)                     |
-| `/dashboard` | Stats, streaks, recent activity, latest AI insights         |
-| `/log`       | Log a new activity for any domain                           |
-| `/analytics` | Charts: activity volume and trends over time                |
-| `/insights`  | Browse AI insights by type + ask natural language questions |
-| `/reports`   | Generate and browse weekly AI performance reports           |
+| Route        | Description                                                       |
+| ------------ | ----------------------------------------------------------------- |
+| `/`          | Landing page                                                      |
+| `/login`     | Sign in (credentials / Google / GitHub)                           |
+| `/dashboard` | Stats, streaks, recent activity, latest AI insights               |
+| `/log`       | Log a new activity for any domain                                 |
+| `/analytics` | Heatmaps, correlation scatter charts, and per-domain trend charts |
+| `/insights`  | Browse AI insights by type + ask natural language questions       |
+| `/reports`   | Generate and browse weekly AI performance reports                 |
+| `/settings`  | Manage domains & goals, configure notifications, export your data |
 
 ### API Endpoints
 
-| Method           | Endpoint                 | Description                                    |
-| ---------------- | ------------------------ | ---------------------------------------------- |
-| `GET / POST`     | `/api/activities`        | List or create activity logs                   |
-| `PATCH / DELETE` | `/api/activities/[id]`   | Update or delete a log entry                   |
-| `GET`            | `/api/domains`           | List all domains                               |
-| `GET`            | `/api/insights`          | Fetch user's AI insights                       |
-| `POST`           | `/api/insights/generate` | Trigger AI weekly report generation            |
-| `GET`            | `/api/weekly-report`     | List weekly reports                            |
-| `POST`           | `/api/query`             | Ask AI a natural language performance question |
+| Method           | Endpoint                  | Description                                      |
+| ---------------- | ------------------------- | ------------------------------------------------ |
+| `GET / POST`     | `/api/activities`         | List or create activity logs                     |
+| `PATCH / DELETE` | `/api/activities/[id]`    | Update or delete a log entry                     |
+| `GET`            | `/api/domains`            | List all domains                                 |
+| `GET / POST`     | `/api/goals`              | List goals with progress or create/upsert a goal |
+| `DELETE`         | `/api/goals/[id]`         | Delete a goal                                    |
+| `GET`            | `/api/insights`           | Fetch user's AI insights                         |
+| `POST`           | `/api/insights/generate`  | Trigger AI weekly report generation              |
+| `GET`            | `/api/weekly-report`      | List weekly reports                              |
+| `POST`           | `/api/query`              | Ask AI a natural language performance question   |
+| `GET`            | `/api/export?format=csv`  | Download full activity history as CSV            |
+| `GET`            | `/api/export?format=json` | Download full activity history as JSON           |
 
 ---
 
@@ -160,11 +180,12 @@ Open [http://localhost:3000](http://localhost:3000) — sign in with any email a
 | Model          | Purpose                                                                              |
 | -------------- | ------------------------------------------------------------------------------------ |
 | `User`         | Auth user — linked to NextAuth accounts/sessions                                     |
-| `Domain`       | Life area to track (Coding, Fitness, Reading, Mood, Sleep, SideProject)              |
+| `Domain`       | Life area to track (Coding, Fitness, Reading, Mood, Sleep, SideProject, or custom)   |
 | `UserDomain`   | Tracks which domains each user has activated                                         |
 | `ActivityLog`  | A single logged activity with `value`, `unit`, `mood`, `energy`, `notes`, `metadata` |
+| `Goal`         | Weekly or monthly target per domain with a numeric `targetValue` and `unit`          |
 | `Insight`      | AI-generated insight with type, confidence level, and recommendation                 |
-| `WeeklyReport` | Weekly summary containing multiple insights                                          |
+| `WeeklyReport` | Weekly summary containing multiple typed insights                                    |
 
 ---
 
@@ -174,6 +195,7 @@ Open [http://localhost:3000](http://localhost:3000) — sign in with any email a
 npm run dev           # Start dev server (Turbopack)
 npm run build         # Production build
 npm run start         # Start production server
+npm run lint          # Run ESLint
 npm run db:push       # Push Prisma schema to DB (no migration history)
 npm run db:migrate    # Create & apply a named migration
 npm run db:seed       # Seed default domains
@@ -194,6 +216,8 @@ Two AI functions:
 - `generateWeeklyReport(activities)` — returns structured JSON with a week summary and typed insights
 - `answerPerformanceQuery(question, activities, insights)` — answers a natural language question about your data
 
+Goal suggestions are generated inline in the Settings page using the same Groq client.
+
 ---
 
 ## 🔐 OAuth Setup
@@ -208,48 +232,16 @@ Two AI functions:
 
 ---
 
-## 📄 License
+## 🎨 Theming
 
-MIT
-npm run db:seed # Re-seed domains
-
-````
+SkillSync ships with a dark mode (default) and a polished light mode. The selected theme is persisted to `localStorage` under the key `skillsync_theme` and applied via a `data-theme` attribute on `<html>` before first paint (no flash). Toggle the theme using the ☀️/🌙 button in the navbar.
 
 ---
 
-_SkillSync — built with Next.js, Prisma, PostgreSQL & Claude._
+## 📄 License
 
-## Getting Started
+MIT
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-````
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+_SkillSync — built with Next.js, Prisma, PostgreSQL & Groq._
